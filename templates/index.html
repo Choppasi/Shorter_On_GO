@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GoURL - Сокращатель ссылок</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="logo">
+                <span class="logo-icon">🔗</span>
+                <h1>GoURL</h1>
+            </div>
+            <p class="tagline">Сокращайте ссылки легко и быстро</p>
+        </header>
+
+        <main class="main">
+            <section class="shorten-section">
+                <form id="shortenForm" class="shorten-form">
+                    <div class="input-group">
+                        <input 
+                            type="url" 
+                            id="urlInput" 
+                            name="url" 
+                            placeholder="Вставьте вашу длинную ссылку..." 
+                            required
+                            autocomplete="off"
+                        >
+                        <button type="submit" class="btn-primary">
+                            <span class="btn-icon">⚡</span>
+                            Сократить
+                        </button>
+                    </div>
+                    <div id="errorMessage" class="error-message"></div>
+                </form>
+
+                <div id="resultContainer" class="result-container hidden">
+                    <div class="result-card">
+                        <div class="result-label">Ваша сокращённая ссылка:</div>
+                        <div class="result-link-group">
+                            <input type="text" id="shortLink" readonly>
+                            <button id="copyBtn" class="btn-copy" title="Копировать">
+                                📋
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="links-section">
+                <h2 class="section-title">
+                    <span class="title-icon">📊</span>
+                    Ваши ссылки
+                    <span class="links-count">{{ len .Links }}</span>
+                </h2>
+
+                {{ if .Links }}
+                <div class="links-list">
+                    {{ range .Links }}
+                    <div class="link-card" data-code="{{ .ShortCode }}">
+                        <div class="link-info">
+                            <div class="link-original" title="{{ .OriginalURL }}">
+                                {{ .OriginalURL }}
+                            </div>
+                            <div class="link-short">
+                                <a href="/r/{{ .ShortCode }}" target="_blank">/r/{{ .ShortCode }}</a>
+                            </div>
+                        </div>
+                        <div class="link-stats">
+                            <div class="stat">
+                                <span class="stat-icon">👁</span>
+                                <span class="stat-value">{{ .Clicks }}</span>
+                            </div>
+                            <div class="stat">
+                                <span class="stat-icon">📅</span>
+                                <span class="stat-value">{{ .CreatedAt }}</span>
+                            </div>
+                        </div>
+                        <div class="link-actions">
+                            <button class="btn-action btn-copy-link" title="Копировать">
+                                📋
+                            </button>
+                            <button class="btn-action btn-delete" title="Удалить" data-code="{{ .ShortCode }}">
+                                🗑
+                            </button>
+                        </div>
+                    </div>
+                    {{ end }}
+                </div>
+                {{ else }}
+                <div class="empty-state">
+                    <div class="empty-icon">🔍</div>
+                    <p>У вас пока нет сокращённых ссылок</p>
+                    <p class="empty-hint">Создайте первую ссылку выше!</p>
+                </div>
+                {{ end }}
+            </section>
+        </main>
+
+        <footer class="footer">
+            <p>🚀 Сделано с Go &hearts;</p>
+        </footer>
+    </div>
+
+    <script>
+        // Обработка формы сокращения
+        document.getElementById('shortenForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const urlInput = document.getElementById('urlInput');
+            const errorMessage = document.getElementById('errorMessage');
+            const resultContainer = document.getElementById('resultContainer');
+            const shortLinkInput = document.getElementById('shortLink');
+            
+            const url = urlInput.value.trim();
+            
+            // Сброс ошибок
+            errorMessage.textContent = '';
+            errorMessage.classList.remove('visible');
+            resultContainer.classList.add('hidden');
+            
+            try {
+                const response = await fetch('/api/shorten', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: 'url=' + encodeURIComponent(url)
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.message || 'Ошибка при сокращении ссылки');
+                }
+                
+                const data = await response.json();
+                
+                shortLinkInput.value = data.short_url;
+                resultContainer.classList.remove('hidden');
+                urlInput.value = '';
+                
+                // Перезагружаем страницу для обновления списка
+                setTimeout(() => {
+                    window.location.reload();
+                }, 500);
+                
+            } catch (error) {
+                errorMessage.textContent = error.message;
+                errorMessage.classList.add('visible');
+            }
+        });
+        
+        // Копирование ссылки
+        document.getElementById('copyBtn').addEventListener('click', function() {
+            const shortLinkInput = document.getElementById('shortLink');
+            shortLinkInput.select();
+            document.execCommand('copy');
+            
+            this.textContent = '✅';
+            setTimeout(() => {
+                this.textContent = '📋';
+            }, 2000);
+        });
+        
+        // Копирование ссылки из карточки
+        document.querySelectorAll('.btn-copy-link').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const card = this.closest('.link-card');
+                const shortUrl = card.querySelector('.link-short a').textContent;
+                
+                navigator.clipboard.writeText(window.location.origin + shortUrl).then(() => {
+                    this.textContent = '✅';
+                    setTimeout(() => {
+                        this.textContent = '📋';
+                    }, 2000);
+                });
+            });
+        });
+        
+        // Удаление ссылки
+        document.querySelectorAll('.btn-delete').forEach(btn => {
+            btn.addEventListener('click', async function() {
+                const shortCode = this.dataset.code;
+                
+                if (!confirm('Вы уверены, что хотите удалить эту ссылку?')) {
+                    return;
+                }
+                
+                try {
+                    const response = await fetch('/api/delete/' + shortCode, {
+                        method: 'DELETE'
+                    });
+                    
+                    if (response.ok) {
+                        window.location.reload();
+                    }
+                } catch (error) {
+                    console.error('Ошибка удаления:', error);
+                }
+            });
+        });
+    </script>
+</body>
+</html>
